@@ -1,0 +1,116 @@
+ Download the Velero CLI for Linux: 
+
+$ wget https://github.com/vmware-tanzu/velero/releases/download/v1.15.2/velero-v1.15.2-linux-amd64.tar.gz 
+
+  
+$ tar -xvf velero-v1.15.2-linux-amd64.tar.gz 
+
+ 
+
+$ sudo mv velero-v1.15.2-linux-amd64/velero /usr/local/bin/ 
+
+add the /etc/hosts in master and worker 
+
+$ 192.168.61.93 minio.toucanint.com
+
+test with is cmd 
+
+$ kubectl run dns-test --rm -it --image=busybox --restart=Never -- sh -c 'nslookup minio.toucanint.com'
+
+edit the coredns 
+
+$ kubectl -n kube-system get configmap coredns -o yaml > coredns-configmap.yaml
+
+apiVersion: v1
+data:
+  Corefile: |
+    .:53 {
+        errors
+        health {
+           lameduck 5s
+        }
+        ready
+        kubernetes cluster.local in-addr.arpa ip6.arpa {
+           pods insecure
+           fallthrough in-addr.arpa ip6.arpa
+           ttl 30
+        }
+        prometheus :9153
+        forward . /etc/resolv.conf {
+           max_concurrent 1000
+        }
+        cache 30
+        loop
+        reload
+        loadbalance
+
+        hosts {
+            192.168.61.93 minio.toucanint.com
+            MINIO_IP_ADDRESS minio.toucanint.com
+            fallthrough
+        }
+    }
+kind: ConfigMap
+metadata:
+  name: coredns
+  namespace: kube-system
+
+replace the resoureversion and uid before the apply the coredns example
+
+  resourceVersion: "230"
+  uid: 78124d43-6f6c-4a15-a860-94d00ab84351
+
+$ kubectl apply -f coredns-configmap.yaml
+
+$ 	
+
+check the this cmd wheather it is resolved are not 
+
+$ kubectl run dns-test --rm -it --image=busybox --restart=Never -- sh -c 'nslookup minio.toucanint.com'
+
+
+$ sudo vi  credentials-velero 
+
+[default]
+aws_access_key_id = minioadmin
+aws_secret_access_key = minioadmin
+
+to install the velero 
+
+velero install \
+  --provider aws \
+  --plugins velero/velero-plugin-for-aws:v1.2.1 \
+  --bucket work-test \
+  --secret-file ./credentials-velero \
+  --use-volume-snapshots=false \
+  --backup-location-config \
+      region=minio,\
+s3ForcePathStyle="true",\
+s3Url=https://minio.toucanint.com,\
+publicUrl=https://minio.toucanint.com \
+  --namespace velero
+
+$ velero get backup-location
+
+$ velero create backup "name"
+
+$ velero backup describe "name"
+
+$ velero create backup "name" --include-namespaces "name"
+
+$ velero get backup
+
+$ velero restore create "name" --from-backup "backupname"
+
+eg : -velero restore create "argo-restore" --from-backup "argocd"
+
+$ kubectl logs deployment/velero -n velero | grep "error"
+
+
+$ kubectl run dns-test --rm -it --image=busybox --restart=Never -- sh -c 'nslookup minio.toucanint.com'
+
+$ velero backup create cluster-backup \
+  --include-cluster-resources \
+  --snapshot-volumes
+
+
